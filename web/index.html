@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Movie collection</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="workspace">
+      <header class="topbar">
+        <h1>Movie collection</h1>
+        <div class="topbar-right">
+          <span class="connection" id="connection"
+            ><span id="connection-text">Connecting…</span></span
+          ><a class="docs-link" href="/docs" target="_blank" rel="noopener"
+            >API docs</a
+          >
+        </div>
+      </header>
+
+      <main>
+        <section
+          class="workflow"
+          aria-label="Movie workflow"
+          aria-busy="false"
+          id="workflow"
+        >
+          <div class="step">
+            <div class="step-heading">
+              <h2>Load movies</h2>
+            </div>
+            <p>Start with the official 20-row sample.</p>
+            <div class="step-actions">
+              <button class="button primary" id="load-sample">
+                Load sample CSV</button
+              ><button class="button quiet" id="choose-file">Choose CSV</button
+              ><input
+                type="file"
+                id="file-input"
+                accept=".csv,text/csv"
+                hidden
+                aria-label="Choose a movie CSV"
+              />
+            </div>
+            <small>Each upload replaces the current collection.</small>
+          </div>
+          <div class="step">
+            <div class="step-heading">
+              <h2>Retrieve movies</h2>
+            </div>
+            <p>Repeat a retrieval to see a cache hit.</p>
+            <div class="step-actions retrieve-actions">
+              <label class="sr-only" for="row-limit">Rows to retrieve</label
+              ><select id="row-limit">
+                <option value="100">All rows (up to 100)</option>
+                <option value="2">First 2 rows</option>
+                <option value="1">First 1 row</option></select
+              ><button class="button secondary" id="retrieve">Retrieve</button>
+            </div>
+            <small>Each row limit has its own 90-second cache.</small>
+          </div>
+          <div class="step">
+            <div class="step-heading">
+              <h2>Clean the collection</h2>
+            </div>
+            <p>Clean with the settings selected below.</p>
+            <div class="step-actions">
+              <button class="button secondary" id="clean" disabled>
+                Clean collection
+              </button>
+            </div>
+            <small id="clean-settings-description"
+              >Duplicates, missing rows &amp; rating outliers.</small
+            >
+          </div>
+        </section>
+
+        <details class="processing-settings" id="processing-settings">
+          <summary>
+            <span>Processing settings</span>
+            <span class="settings-summary" id="settings-summary"
+              >MP3 defaults · IQR × 1.5</span
+            >
+          </summary>
+          <form id="processing-form">
+            <div class="settings-intro">
+              <p>
+                These settings apply when you click
+                <strong>Clean collection</strong>.
+              </p>
+              <button type="button" class="text-button" id="reset-settings">
+                Use MP3 defaults
+              </button>
+            </div>
+            <div class="settings-grid">
+              <fieldset class="settings-section">
+                <legend>Cleaning</legend>
+                <label class="check-option"
+                  ><input
+                    type="checkbox"
+                    id="remove-duplicates"
+                    checked
+                  />Remove duplicate rows</label
+                >
+                <label class="check-option"
+                  ><input type="checkbox" id="missing-enabled" checked />Handle
+                  missing values</label
+                >
+                <fieldset class="dependent-settings" id="missing-options">
+                  <label class="settings-field" for="missing-axis"
+                    >Remove missing values by
+                    <select id="missing-axis">
+                      <option value="rows">Dropping rows</option>
+                      <option value="columns">Dropping columns</option>
+                    </select>
+                  </label>
+                  <p class="settings-help">
+                    Dropped columns remain in the fixed movie table as NULL.
+                  </p>
+                </fieldset>
+              </fieldset>
+
+              <fieldset class="settings-section">
+                <legend>Outliers</legend>
+                <label class="check-option"
+                  ><input type="checkbox" id="outliers-enabled" checked />Remove
+                  outliers</label
+                >
+                <fieldset class="dependent-settings" id="outlier-options">
+                  <div class="settings-pair">
+                    <label class="settings-field" for="outlier-method"
+                      >Method
+                      <select id="outlier-method">
+                        <option value="iqr">IQR</option>
+                        <option value="zscore">Z-score</option>
+                      </select>
+                    </label>
+                    <label class="settings-field" for="outlier-threshold"
+                      >Threshold
+                      <input
+                        id="outlier-threshold"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value="1.5"
+                        required
+                        inputmode="decimal"
+                        aria-describedby="outlier-help"
+                      />
+                    </label>
+                  </div>
+                  <p class="settings-help" id="outlier-help">
+                    IQR multiplier: values outside Q1 − 1.5 × IQR and Q3 + 1.5 ×
+                    IQR are removed.
+                  </p>
+                  <fieldset class="column-options" id="outlier-columns">
+                    <legend>Outlier columns</legend>
+                    <label class="check-option"
+                      ><input type="checkbox" value="title" />Title</label
+                    >
+                    <label class="check-option"
+                      ><input type="checkbox" value="release_year" />Year</label
+                    >
+                    <label class="check-option"
+                      ><input
+                        type="checkbox"
+                        value="rating"
+                        checked
+                      />Rating</label
+                    >
+                    <label class="check-option"
+                      ><input type="checkbox" value="genre" />Genre</label
+                    >
+                  </fieldset>
+                  <p class="settings-help">Non-numeric columns are skipped.</p>
+                </fieldset>
+              </fieldset>
+
+              <fieldset class="settings-section">
+                <legend>Validation</legend>
+                <fieldset class="column-options" id="required-columns">
+                  <legend>Required columns</legend>
+                  <label class="check-option"
+                    ><input type="checkbox" value="title" checked />Title</label
+                  >
+                  <label class="check-option"
+                    ><input
+                      type="checkbox"
+                      value="release_year"
+                      checked
+                    />Year</label
+                  >
+                  <label class="check-option"
+                    ><input
+                      type="checkbox"
+                      value="rating"
+                      checked
+                    />Rating</label
+                  >
+                  <label class="check-option"
+                    ><input type="checkbox" value="genre" checked />Genre</label
+                  >
+                </fieldset>
+                <fieldset class="column-options" id="numeric-columns">
+                  <legend>Numeric columns</legend>
+                  <label class="check-option"
+                    ><input type="checkbox" value="title" />Title</label
+                  >
+                  <label class="check-option"
+                    ><input
+                      type="checkbox"
+                      value="release_year"
+                      checked
+                    />Year</label
+                  >
+                  <label class="check-option"
+                    ><input
+                      type="checkbox"
+                      value="rating"
+                      checked
+                    />Rating</label
+                  >
+                  <label class="check-option"
+                    ><input type="checkbox" value="genre" />Genre</label
+                  >
+                </fieldset>
+                <p class="settings-help">
+                  Rows with invalid numeric values are removed before cleaning.
+                </p>
+              </fieldset>
+            </div>
+          </form>
+        </details>
+
+        <div
+          class="notice"
+          id="notice"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
+
+        <section
+          class="processing-result"
+          id="processing-result"
+          aria-label="Cleaning result"
+          hidden
+        >
+          <div>
+            <h2>Cleaning result</h2>
+            <div class="before-after">
+              <strong id="rows-before">20</strong><span>to</span
+              ><strong id="rows-after">16</strong
+              ><span class="result-unit">movies</span>
+            </div>
+          </div>
+          <div class="processing-copy">
+            <strong id="removed-count">4 rows removed</strong>
+            <p id="processing-summary"></p>
+          </div>
+          <span class="result-note">Previous cache cleared</span>
+        </section>
+
+        <section class="collection" aria-labelledby="collection-heading">
+          <div class="collection-toolbar">
+            <div class="collection-title">
+              <div class="title-line">
+                <h2 id="collection-heading">Your movies</h2>
+                <span class="count">(<span id="total-count">0</span>)</span>
+              </div>
+              <p id="table-caption">Load a CSV to get started.</p>
+            </div>
+            <form id="search-form" class="search-form">
+              <label for="min-rating">Minimum rating</label>
+              <div class="search-inputs">
+                <input
+                  id="min-rating"
+                  name="min_rating"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="8.5"
+                  required
+                  inputmode="decimal"
+                /><button
+                  class="button secondary"
+                  id="search-button"
+                  type="submit"
+                  disabled
+                >
+                  Find top 2
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="view-bar">
+            <div class="view-context">
+              <span id="view-label">Collection</span
+              ><span class="source-badge" id="source-badge" hidden></span>
+            </div>
+            <button class="text-button" id="show-all" hidden>
+              Back to collection
+            </button>
+          </div>
+          <div class="empty-state" id="empty-state">
+            <h3 id="empty-title">No movies loaded</h3>
+            <p id="empty-description">
+              Load the sample CSV above, or choose your own movie CSV.
+            </p>
+          </div>
+          <div class="table-scroll" id="table-container" hidden>
+            <table>
+              <caption class="sr-only" id="accessible-caption">
+                Stored movies
+              </caption>
+              <thead>
+                <tr id="table-head"></tr>
+              </thead>
+              <tbody id="movie-rows"></tbody>
+            </table>
+          </div>
+          <div class="collection-footer">
+            <span class="storage-note"
+              >Saved in SQLite · survives a server restart</span
+            ><span id="request-time"></span>
+          </div>
+        </section>
+
+        <details class="activity" id="activity">
+          <summary>
+            <span>Request activity</span
+            ><span class="activity-hint">Cache events &amp; API details</span>
+          </summary>
+          <ol id="activity-list">
+            <li class="activity-empty">Your requests will appear here.</li>
+          </ol>
+        </details>
+      </main>
+    </div>
+  </body>
+</html>
