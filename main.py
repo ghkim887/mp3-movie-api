@@ -5,9 +5,12 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from data_pipeline import create_cleaning_report, process_data, validate_dataframe
 from src import (
@@ -22,8 +25,11 @@ from src import (
     setup_logging,
 )
 from src.storage import MOVIE_COLUMNS
+from src.checkoff import GUIDE, TOPICS, get_source_topic
+from src.diagnostics import install_request_logging, journal
 
 setup_logging(verbose=True)
+install_request_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Movie Processing API", version="1.0.0")
@@ -32,6 +38,39 @@ storage = MovieStorage()
 cache = MovieCache()
 PROJECT_ROOT = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=PROJECT_ROOT / "web"), name="static")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def log_http_error(request: Request, error: StarletteHTTPException):
+    logger.warning("Rejected request: status=%s, detail=%s", error.status_code, error.detail)
+    return await http_exception_handler(request, error)
+
+
+@app.exception_handler(RequestValidationError)
+async def log_validation_error(request: Request, error: RequestValidationError):
+    logger.warning("Request validation failed: %s", error.errors())
+    return await request_validation_exception_handler(request, error)
+
+
+@app.get("/ui/requests/{request_id}", include_in_schema=False)
+def request_logs(request_id: str):
+    entry = journal.get(request_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Logs expired or this request was not recorded.")
+    return entry
+
+
+@app.get("/ui/guide", include_in_schema=False)
+def checkoff_guide():
+    return {"scenarios": GUIDE, "topics": [{"id": key, "title": topic["title"]} for key, topic in TOPICS.items()]}
+
+
+@app.get("/ui/source/{topic_id}", include_in_schema=False)
+def source_reference(topic_id: str):
+    topic = get_source_topic(topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Unknown code topic.")
+    return topic
 
 
 @app.get("/", include_in_schema=False)

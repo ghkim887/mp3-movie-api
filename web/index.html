@@ -7,6 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
+    <script src="/static/checkoff.js" defer></script>
   </head>
   <body>
     <div class="workspace">
@@ -18,6 +19,7 @@
           ><a class="docs-link" href="/docs" target="_blank" rel="noopener"
             >API docs</a
           >
+          <button class="text-button" id="health-check">Check health</button>
         </div>
       </header>
 
@@ -40,7 +42,6 @@
               ><input
                 type="file"
                 id="file-input"
-                accept=".csv,text/csv"
                 hidden
                 aria-label="Choose a movie CSV"
               />
@@ -54,11 +55,19 @@
             <p>Repeat a retrieval to see a cache hit.</p>
             <div class="step-actions retrieve-actions">
               <label class="sr-only" for="row-limit">Rows to retrieve</label
-              ><select id="row-limit">
-                <option value="100">All rows (up to 100)</option>
-                <option value="2">First 2 rows</option>
-                <option value="1">First 1 row</option></select
-              ><button class="button secondary" id="retrieve">Retrieve</button>
+              ><input
+                id="row-limit"
+                type="text"
+                inputmode="numeric"
+                value="100"
+                list="limit-options"
+              />
+              <datalist id="limit-options">
+                <option value="100"></option>
+                <option value="2"></option>
+                <option value="1"></option>
+              </datalist>
+              <button class="button secondary" id="retrieve">Retrieve</button>
             </div>
             <small>Each row limit has its own 90-second cache.</small>
           </div>
@@ -68,7 +77,7 @@
             </div>
             <p>Clean with the settings selected below.</p>
             <div class="step-actions">
-              <button class="button secondary" id="clean" disabled>
+              <button class="button secondary" id="clean">
                 Clean collection
               </button>
             </div>
@@ -78,6 +87,34 @@
           </div>
         </section>
 
+        <details class="guide-panel" id="checkoff-guide">
+          <summary>
+            Check-off guide
+            <span class="activity-hint"
+              >Conditions, error examples and code references</span
+            >
+          </summary>
+          <div class="guide-content">
+            <label for="guide-scenario">Requirement or scenario</label>
+            <select id="guide-scenario">
+              <option>Loading guide…</option>
+            </select>
+            <p id="guide-steps"></p>
+            <p><strong>Expected:</strong> <span id="guide-expected"></span></p>
+            <pre id="guide-command" hidden></pre>
+            <div class="guide-actions">
+              <button class="button" id="prepare-scenario" hidden>
+                Prepare inputs</button
+              ><span id="guide-code-links"></span>
+            </div>
+            <p class="settings-help">
+              Practice prompts from the MP3 instructions; the TA chooses the
+              actual questions. Preparing inputs does not run the request.
+              Upload examples are sent when you click their upload button.
+            </p>
+          </div>
+        </details>
+
         <details class="processing-settings" id="processing-settings">
           <summary>
             <span>Processing settings</span>
@@ -85,7 +122,7 @@
               >MP3 defaults · IQR × 1.5</span
             >
           </summary>
-          <form id="processing-form">
+          <form id="processing-form" novalidate>
             <div class="settings-intro">
               <p>
                 These settings apply when you click
@@ -112,10 +149,16 @@
                 <fieldset class="dependent-settings" id="missing-options">
                   <label class="settings-field" for="missing-axis"
                     >Remove missing values by
-                    <select id="missing-axis">
-                      <option value="rows">Dropping rows</option>
-                      <option value="columns">Dropping columns</option>
-                    </select>
+                    <input
+                      id="missing-axis"
+                      type="text"
+                      value="rows"
+                      list="axis-options"
+                    />
+                    <datalist id="axis-options">
+                      <option value="rows"></option>
+                      <option value="columns"></option>
+                    </datalist>
                   </label>
                   <p class="settings-help">
                     Dropped columns remain in the fixed movie table as NULL.
@@ -133,20 +176,23 @@
                   <div class="settings-pair">
                     <label class="settings-field" for="outlier-method"
                       >Method
-                      <select id="outlier-method">
-                        <option value="iqr">IQR</option>
-                        <option value="zscore">Z-score</option>
-                      </select>
+                      <input
+                        id="outlier-method"
+                        type="text"
+                        value="iqr"
+                        list="method-options"
+                      />
+                      <datalist id="method-options">
+                        <option value="iqr"></option>
+                        <option value="zscore"></option>
+                      </datalist>
                     </label>
                     <label class="settings-field" for="outlier-threshold"
                       >Threshold
                       <input
                         id="outlier-threshold"
-                        type="number"
-                        min="0"
-                        step="any"
+                        type="text"
                         value="1.5"
-                        required
                         inputmode="decimal"
                         aria-describedby="outlier-help"
                       />
@@ -175,6 +221,14 @@
                       ><input type="checkbox" value="genre" />Genre</label
                     >
                   </fieldset>
+                  <label
+                    class="settings-field extra-columns"
+                    for="extra-outlier-columns"
+                    >Additional outlier columns<input
+                      id="extra-outlier-columns"
+                      type="text"
+                      placeholder="Comma-separated names"
+                  /></label>
                   <p class="settings-help">Non-numeric columns are skipped.</p>
                 </fieldset>
               </fieldset>
@@ -204,6 +258,14 @@
                     ><input type="checkbox" value="genre" checked />Genre</label
                   >
                 </fieldset>
+                <label
+                  class="settings-field extra-columns"
+                  for="extra-required-columns"
+                  >Additional required columns<input
+                    id="extra-required-columns"
+                    type="text"
+                    placeholder="Comma-separated names"
+                /></label>
                 <fieldset class="column-options" id="numeric-columns">
                   <legend>Numeric columns</legend>
                   <label class="check-option"
@@ -227,11 +289,42 @@
                     ><input type="checkbox" value="genre" />Genre</label
                   >
                 </fieldset>
+                <label
+                  class="settings-field extra-columns"
+                  for="extra-numeric-columns"
+                  >Additional numeric columns<input
+                    id="extra-numeric-columns"
+                    type="text"
+                    placeholder="Comma-separated names"
+                /></label>
                 <p class="settings-help">
                   Rows with invalid numeric values are removed before cleaning.
                 </p>
               </fieldset>
             </div>
+            <details class="raw-request">
+              <summary>
+                Raw processing body
+                <span class="activity-hint"
+                  >For malformed JSON or unusual model types</span
+                >
+              </summary>
+              <label class="check-option"
+                ><input type="checkbox" id="use-raw-body" />Send this text
+                unchanged instead of the form settings</label
+              >
+              <button type="button" class="text-button" id="copy-config">
+                Copy current settings into editor
+              </button>
+              <label class="sr-only" for="raw-processing-body"
+                >Raw processing JSON</label
+              >
+              <textarea
+                id="raw-processing-body"
+                rows="10"
+                spellcheck="false"
+              ></textarea>
+            </details>
           </form>
         </details>
 
@@ -269,32 +362,38 @@
             <div class="collection-title">
               <div class="title-line">
                 <h2 id="collection-heading">Your movies</h2>
-                <span class="count">(<span id="total-count">0</span>)</span>
+                <span class="count">(<span id="total-count">—</span>)</span>
               </div>
-              <p id="table-caption">Load a CSV to get started.</p>
+              <p id="table-caption">
+                Retrieve the stored collection or upload a CSV.
+              </p>
             </div>
-            <form id="search-form" class="search-form">
-              <label for="min-rating">Minimum rating</label>
-              <div class="search-inputs">
-                <input
+            <form id="search-form" class="search-form" novalidate>
+              <label
+                >Minimum rating<input
                   id="min-rating"
                   name="min_rating"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
+                  type="text"
                   value="8.5"
-                  required
                   inputmode="decimal"
-                /><button
-                  class="button secondary"
-                  id="search-button"
-                  type="submit"
-                  disabled
-                >
-                  Find top 2
-                </button>
-              </div>
+              /></label>
+              <label
+                >Columns<input
+                  id="search-columns"
+                  type="text"
+                  value="title,rating"
+                  placeholder="Blank: API default title"
+              /></label>
+              <label
+                >Limit<input
+                  id="search-limit"
+                  type="text"
+                  value="2"
+                  inputmode="numeric"
+              /></label>
+              <button class="button secondary" id="search-button" type="submit">
+                Search
+              </button>
             </form>
           </div>
 
@@ -308,9 +407,10 @@
             </button>
           </div>
           <div class="empty-state" id="empty-state">
-            <h3 id="empty-title">No movies loaded</h3>
+            <h3 id="empty-title">Collection not retrieved</h3>
             <p id="empty-description">
-              Load the sample CSV above, or choose your own movie CSV.
+              Click Retrieve to read stored movies, or upload a CSV to replace
+              them.
             </p>
           </div>
           <div class="table-scroll" id="table-container" hidden>
@@ -331,15 +431,72 @@
           </div>
         </section>
 
+        <section
+          class="request-inspector"
+          id="request-inspector"
+          aria-labelledby="request-heading"
+          hidden
+        >
+          <div class="inspector-heading">
+            <h2 id="request-heading">Request and response</h2>
+            <span id="response-status"></span>
+            <button
+              type="button"
+              class="text-button"
+              id="back-to-inputs"
+              data-independent="true"
+            >
+              Back to inputs
+            </button>
+          </div>
+          <p id="response-meta"></p>
+          <div id="request-code-links" class="code-links"></div>
+          <div class="response-grid">
+            <details>
+              <summary>Sent request</summary>
+              <pre id="sent-request"></pre>
+            </details>
+            <details id="response-details">
+              <summary>Full response JSON</summary>
+              <pre id="response-body"></pre>
+            </details>
+          </div>
+          <details>
+            <summary>Response headers</summary>
+            <pre id="response-headers"></pre>
+          </details>
+          <details id="server-log-details">
+            <summary>Related server logs</summary>
+            <pre id="server-logs"></pre>
+          </details>
+        </section>
+
         <details class="activity" id="activity">
           <summary>
             <span>Request activity</span
-            ><span class="activity-hint">Cache events &amp; API details</span>
+            ><span class="activity-hint"
+              >Select an earlier response and its logs</span
+            >
           </summary>
           <ol id="activity-list">
             <li class="activity-empty">Your requests will appear here.</li>
           </ol>
         </details>
+        <dialog id="source-dialog" aria-labelledby="source-title">
+          <div class="dialog-heading">
+            <h2 id="source-title">Related code</h2>
+            <button
+              type="button"
+              class="button"
+              id="close-source"
+              data-independent="true"
+            >
+              Close
+            </button>
+          </div>
+          <p id="source-explanation"></p>
+          <div id="source-content"></div>
+        </dialog>
       </main>
     </div>
   </body>

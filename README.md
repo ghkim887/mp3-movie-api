@@ -7,7 +7,7 @@ The processing endpoint reuses the MP1 modules in `data_pipeline/` to validate n
 `src/cache.py` uses a dedicated FakeRedis instance to cache complete `GET /movies` responses by limit for 90 seconds, and successful uploads and processing clear every cached limit.
 Movie searches remain uncached, SQLite data survives server restarts, and the in-process cache starts empty after each restart.
 The models, logging utilities, and middleware in `src/` provide request validation, response schemas, request IDs, and request timing logs.
-The browser interface in `web/` presents editable processing settings with an MP3 default preset, simple retrieval controls, and visible cache results for check-off demonstrations.
+The browser interface in `web/` presents editable request settings, actual responses and request-correlated logs, and read-only code references for check-off demonstrations.
 
 ## Setup and run
 
@@ -38,18 +38,23 @@ The default database is `data/movies.db`, relative to the project root, and its 
 
 ## Simple GUI demo
 
-1. Click **Load sample CSV**. The interface uploads the official fixture and retrieves 20 movies; the result badge shows **Database · MISS**.
-2. Click **Retrieve** again to see **Cache · HIT**. Select **First 1 row** and retrieve to demonstrate a separate cache entry.
-3. Click **Find top 2** with the default minimum rating of 8.5. The results show Movie C and Movie B; SQL search is explicitly marked **Not cached**.
-4. Click **Clean collection**. The default assignment settings produce **20 → 16** movies, clear prior cached limits, and retrieve the updated collection from SQLite. Another retrieval shows **HIT**.
+1. Click **Load sample CSV**. The interface uploads the official fixture and reports 20 stored movies. It does not automatically retrieve or populate the cache.
+2. Click **Retrieve** with limit 100 to see **MISS**, then repeat to see **HIT**. Enter limit 1 or another value to demonstrate a separate cache entry.
+3. Click **Search** with minimum rating 8.5 and limit 2. The results show Movie C and Movie B. Change **Columns** to `title`, `title,rating`, or other movie columns; blank uses the API default `title`. Search remains uncached.
+4. Click **Clean collection**. The default settings produce **20 → 16** movies and clear prior cached limits. Click **Retrieve** to read updated rows with a **MISS**, then repeat for a **HIT**.
 5. Stop and restart the server with the launcher, then retrieve the collection to show that the 16 movies persisted. Load the sample again to demonstrate replacement with 20 rows.
 
 Open **Processing settings** to change duplicate removal, missing-value handling and axis, outlier detection and columns, IQR/Z-score method and threshold, and required/numeric validation columns.
 Click **Use MP3 defaults** to restore the assignment settings; changes apply only when **Clean collection** is clicked.
-The panel starts collapsed, and no JSON editing is needed.
+The panel starts collapsed, and normal processing needs no JSON editing. A raw-body editor is available for malformed JSON and unusual field-type demonstrations.
 **Choose CSV** uploads another file, and **Back to collection** exits the search view.
-The optional **Request activity** section shows real API requests, cache events, request IDs, and timings.
+Inputs are sent to the server without browser range validation or silent fallback values. Empty collections do not disable processing or search. File selection permits any extension. Only an in-progress request temporarily disables duplicate actions.
+The **Request and response** section shows the sent input, complete JSON response, HTTP headers, request ID, and actual application logs for that ID. Errors automatically expand the response and log sections. **Request activity** retains the last 12 responses for inspection.
+**Check-off guide** provides practice conditions, expected outcomes, prepare-input actions, invalid upload examples, a numeric/missing-value fixture, and the commands for real server restart and pytest. Its prompts come from the assignment, not the TA's actual questions.
+Related-code links open a read-only popup with current function text, file paths, and line numbers derived from the local files. They do not edit code or depend on GitHub connectivity. Server restart and pytest still run in the project terminal.
 `X-Movie-Cache` response headers report actual cache lookups; the movie JSON response format is unchanged.
+
+`src/diagnostics.py` captures a bounded copy of real application log records using a request ContextVar, preserving request isolation across async tasks and worker threads. The journal retains the latest 100 requests with up to 100 records each and resets on server restart. `src/checkoff.py` contains the guide and an explicit allowlist of source symbols; the source viewer cannot read arbitrary filesystem paths. The read-only `/ui/` routes are excluded from the graded API schema.
 
 ## Sample workflow
 
@@ -106,7 +111,7 @@ Failed validation, processing, or SQL writes preserve both the previous database
 .\venv\Scripts\python.exe -m pytest tests -v
 ```
 
-The 57 tests include the three required tests: `test_movies_persist`, `test_cache_and_processing`, and `test_cache_hit_skips_database`.
+The tests include the three required tests: `test_movies_persist`, `test_cache_and_processing`, and `test_cache_hit_skips_database`.
 Each API test uses a temporary SQLite database and a fresh cache.
-Additional checks cover SQL ordering, column validation, NULL conversion, upload replacement, cache lifetime and invalidation, transaction rollback, failed processing, and request logging.
+Additional checks cover SQL ordering, column validation, NULL conversion, upload replacement, cache lifetime and invalidation, transaction rollback, failed processing, concurrent request-log isolation, validation-error logs, and current code-reference line numbers.
 The copied Starlette/httpx TestClient combination emits one deprecation warning; the tests pass with the pinned dependencies.
